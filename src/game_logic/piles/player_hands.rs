@@ -12,7 +12,7 @@ impl Index<Player> for PlayerHands {
     fn index(&self, player: Player) -> &Self::Output {
         match player {
             Player::PLAYER1 => &self.0,
-            Player::PLAYER2 => &self.1
+            Player::PLAYER2 => &self.1,
         }
     }
 }
@@ -21,7 +21,7 @@ impl IndexMut<Player> for PlayerHands {
     fn index_mut(&mut self, player: Player) -> &mut Self::Output {
         match player {
             Player::PLAYER1 => &mut self.0,
-            Player::PLAYER2 => &mut self.1
+            Player::PLAYER2 => &mut self.1,
         }
     }
 }
