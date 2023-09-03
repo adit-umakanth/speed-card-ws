@@ -1,9 +1,16 @@
 mod card;
 mod piles;
-mod player;
 mod rank;
-mod side;
 mod suit;
+
+mod player;
+pub use player::Player;
+
+mod side;
+pub use side::Side;
 
 mod speedtable;
 pub use speedtable::SpeedTable;
+
+mod playerview;
+pub use playerview::PlayerView;
