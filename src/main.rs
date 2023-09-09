@@ -2,6 +2,7 @@ mod game_logic;
 mod player_action;
 use player_action::*;
 mod server_message;
+use server_message::*;
 
 use anyhow::Result;
 use futures_util::{
@@ -38,7 +39,7 @@ async fn main() -> Result<()> {
     let (mut p2_tx, mut p2_rx) = connect_player(&listener).await?;
     println!("Player 2 connected!");
 
-    send_player_view(&mut p1_tx, &mut p2_tx, &table).await;
+    send_player_message(&mut p1_tx, &mut p2_tx, &table, ServerAction::SetBoard).await;
 
     loop {
         let (player_move, player) = wait_for_player_move(&mut p1_rx, &mut p2_rx).await?;
@@ -55,7 +56,7 @@ async fn main() -> Result<()> {
                 table.place_card(player, side, hand_index);
             }
         }
-        send_player_view(&mut p1_tx, &mut p2_tx, &table).await;
+        send_player_message(&mut p1_tx, &mut p2_tx, &table, ServerAction::SetBoard).await;
     }
 
     Ok(())
@@ -67,13 +68,26 @@ async fn connect_player(listener: &TcpListener) -> Result<(Sender, Reciever)> {
     Ok(player_stream.split())
 }
 
-async fn send_player_view(p1: &mut Sender, p2: &mut Sender, table: &SpeedTable) {
+async fn send_player_message(
+    p1: &mut Sender,
+    p2: &mut Sender,
+    table: &SpeedTable,
+    server_action: ServerAction,
+) {
     let (_, _) = join(
         p1.send(Message::Text(
-            serde_json::to_string(&table.get_player_view(Player::PLAYER1)).unwrap(),
+            serde_json::to_string(&ServerMessage {
+                action: server_action,
+                player_view: table.get_player_view(Player::PLAYER1),
+            })
+            .unwrap(),
         )),
         p2.send(Message::Text(
-            serde_json::to_string(&table.get_player_view(Player::PLAYER2)).unwrap(),
+            serde_json::to_string(&ServerMessage {
+                action: server_action,
+                player_view: table.get_player_view(Player::PLAYER2),
+            })
+            .unwrap(),
         )),
     )
     .await;
