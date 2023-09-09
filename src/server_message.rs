@@ -1,8 +1,18 @@
+use serde::Serialize;
+
 use crate::game_logic::{Player, PlayerView};
 
-enum ServerMessage {
-    PlayerMove(PlayerView),
-    OpponentMove(PlayerView),
+#[derive(Clone, Copy, Serialize)]
+pub enum ServerAction {
+    SetBoard,
+    PlayerMove,
+    OpponentMove,
     IllegalMove,
-    GameWon(Player),
+    GameWon,
+}
+
+#[derive(Serialize)]
+pub struct ServerMessage {
+    pub action: ServerAction,
+    pub player_view: PlayerView,
 }
