@@ -31,7 +31,7 @@ async fn main() -> Result<()> {
     table.player_draw_card(Player::PLAYER2);
     table.player_draw_card(Player::PLAYER2);
 
-    let addr = "127.0.0.1:8080".to_string();
+    let addr = "0.0.0.0:8080".to_string();
     let listener = TcpListener::bind(&addr).await?;
 
     let (mut p1_tx, mut p1_rx) = connect_player(&listener).await?;
