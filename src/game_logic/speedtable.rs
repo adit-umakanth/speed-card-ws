@@ -1,4 +1,4 @@
-use super::{player::Player, rank::Rank, suit::Suit};
+use super::{player::Player, rank::Rank, suit::Suit, PlayerView};
 use crate::game_logic::card::Card;
 use crate::game_logic::piles::*;
 use crate::game_logic::side::Side;
@@ -104,6 +104,23 @@ impl SpeedTable {
             Ok(())
         } else {
             Err(IllegalMoveError)
+        }
+    }
+
+    pub fn get_player_view(&self, player: Player) -> PlayerView {
+        let opponent_hand = self.player_hands[player.opponent()].map(|x| x.is_some());
+        PlayerView {
+            player_hand: self.player_hands[player],
+            active_cards: [
+                self.active_piles[Side::LEFT].last().copied(),
+                self.active_piles[Side::RIGHT].last().copied(),
+            ],
+            opponent_hand,
+            opponent_pile: self.player_piles[player.opponent()].len() != 0,
+            middle_piles: [
+                !self.middle_piles[Side::LEFT].is_empty(),
+                !self.middle_piles[Side::RIGHT].is_empty(),
+            ],
         }
     }
 }

@@ -1,7 +1,9 @@
+use serde::Serialize;
+
 use crate::game_logic::rank::Rank;
 use crate::game_logic::suit::Suit;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 pub struct Card {
     pub rank: Rank,
     pub suit: Suit,

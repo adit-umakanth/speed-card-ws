@@ -1,4 +1,6 @@
-#[derive(Clone, Copy, Debug, PartialEq)]
+use serde::Serialize;
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 pub enum Suit {
     Diamonds,
     Spades,

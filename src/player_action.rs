@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::game_logic::Side;
 
 #[derive(Debug, Serialize, Deserialize)]
-enum PlayerAction {
+pub enum PlayerAction {
     DrawCard,
     Flip,
     PlaceCard(usize, Side),
