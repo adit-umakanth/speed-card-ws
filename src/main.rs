@@ -41,10 +41,7 @@ async fn start_game(mut p1: (Sender, Reciever), mut p2: (Sender, Reciever)) -> R
 
         match player_move {
             PlayerAction::DrawCard => {
-                match table.player_draw_card(player) {
-                    Ok(_) => todo!(),
-                    Err(_) => todo!(),
-                };
+                table.player_draw_card(player);
             }
             PlayerAction::Flip => {
                 table.flip_middle_cards();

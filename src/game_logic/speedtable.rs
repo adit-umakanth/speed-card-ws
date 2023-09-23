@@ -52,17 +52,24 @@ impl SpeedTable {
         SpeedTable::new_set_rng(&mut thread_rng())
     }
 
+    /// Move the top cards on the middle piles onto the active piles.
+    /// This is done on request by both players when they think they have no more cards to play.
     pub fn flip_middle_cards(&mut self) {
-        match (
-            self.middle_piles[Side::LEFT].last(),
-            self.middle_piles[Side::RIGHT].last(),
-        ) {
-            (Some(_), Some(_)) => {
-                self.active_piles[Side::LEFT].push(self.middle_piles[Side::LEFT].pop().unwrap());
-                self.active_piles[Side::RIGHT].push(self.middle_piles[Side::RIGHT].pop().unwrap());
-            }
-            _ => todo!(), // Shuffle middle cards and redistribute
+        if self.middle_piles[Side::LEFT].last().is_none()
+            || self.middle_piles[Side::RIGHT].last().is_none()
+        {
+            let mut combined_pile = Vec::new();
+            combined_pile.append(&mut self.middle_piles[Side::LEFT]);
+            combined_pile.append(&mut self.middle_piles[Side::RIGHT]);
+            combined_pile.append(&mut self.active_piles[Side::LEFT]);
+            combined_pile.append(&mut self.active_piles[Side::RIGHT]);
+            combined_pile.shuffle(&mut thread_rng());
+            self.middle_piles[Side::LEFT] =
+                combined_pile.drain(0..combined_pile.len() / 2).collect();
+            self.middle_piles[Side::RIGHT].append(&mut combined_pile);
         }
+        self.active_piles[Side::LEFT].push(self.middle_piles[Side::LEFT].pop().unwrap());
+        self.active_piles[Side::RIGHT].push(self.middle_piles[Side::RIGHT].pop().unwrap());
     }
 
     fn get_first_empty_hand_idx(&self, player: Player) -> Option<usize> {
@@ -241,5 +248,61 @@ mod tests {
             Err(SpeedError::IllegalMoveError)
         );
         assert_eq!(table.place_card(Player::PLAYER1, Side::LEFT, 1), Ok(()));
+    }
+
+    #[test]
+    fn test_middle_reshuffle_equal() {
+        let mut table = SpeedTable::new();
+        for _ in 0..7 {
+            table.flip_middle_cards();
+        }
+
+        assert_eq!(table.middle_piles[Side::LEFT].len(), 0);
+        assert_eq!(table.middle_piles[Side::RIGHT].len(), 0);
+
+        table.flip_middle_cards();
+
+        assert_eq!(table.active_piles[Side::LEFT].len(), 1);
+        assert_eq!(table.active_piles[Side::RIGHT].len(), 1);
+        assert_eq!(table.middle_piles[Side::LEFT].len(), 6);
+        assert_eq!(table.middle_piles[Side::RIGHT].len(), 6);
+    }
+
+    #[test]
+    fn test_middle_reshuffle_unequal() {
+        let mut rng = ChaCha8Rng::seed_from_u64(0);
+        let mut table = SpeedTable::new_set_rng(&mut rng);
+
+        while let Ok(()) = table.player_draw_card(Player::PLAYER1) {}
+        while let Ok(()) = table.player_draw_card(Player::PLAYER2) {}
+
+        table.flip_middle_cards();
+
+        assert_eq!(table.place_card(Player::PLAYER1, Side::LEFT, 1), Ok(()));
+
+        for _ in 0..6 {
+            table.flip_middle_cards();
+        }
+
+        table.flip_middle_cards();
+
+        assert_eq!(table.active_piles[Side::LEFT].len(), 1);
+        assert_eq!(table.active_piles[Side::RIGHT].len(), 1);
+        assert_eq!(table.middle_piles[Side::LEFT].len(), 6);
+        assert_eq!(table.middle_piles[Side::RIGHT].len(), 7);
+
+        for _ in 0..6 {
+            table.flip_middle_cards();
+        }
+
+        assert_eq!(table.middle_piles[Side::LEFT].len(), 0);
+        assert_eq!(table.middle_piles[Side::RIGHT].len(), 1);
+
+        table.flip_middle_cards();
+
+        assert_eq!(table.active_piles[Side::LEFT].len(), 1);
+        assert_eq!(table.active_piles[Side::RIGHT].len(), 1);
+        assert_eq!(table.middle_piles[Side::LEFT].len(), 6);
+        assert_eq!(table.middle_piles[Side::RIGHT].len(), 7);
     }
 }
