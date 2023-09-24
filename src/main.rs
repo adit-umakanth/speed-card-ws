@@ -39,17 +39,11 @@ async fn start_game(mut p1: (Sender, Reciever), mut p2: (Sender, Reciever)) -> R
     loop {
         let (player_move, player) = wait_for_player_move(&mut p1.1, &mut p2.1).await?;
 
-        match player_move {
-            PlayerAction::DrawCard => {
-                table.player_draw_card(player);
-            }
-            PlayerAction::Flip => {
-                table.flip_middle_cards();
-            }
-            PlayerAction::PlaceCard(hand_index, side) => {
-                table.place_card(player, side, hand_index);
-            }
-        }
+        let move_result = match player_move {
+            PlayerAction::DrawCard => table.player_draw_card(player),
+            PlayerAction::Flip => table.flip_middle_cards(),
+            PlayerAction::PlaceCard(hand_index, side) => table.place_card(player, side, hand_index),
+        };
         send_player_message(&mut p1.0, &mut p2.0, &table, ServerAction::SetBoard).await;
     }
 }

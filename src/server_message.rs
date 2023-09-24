@@ -5,10 +5,8 @@ use crate::game_logic::{Player, PlayerView};
 #[derive(Clone, Copy, Serialize)]
 pub enum ServerAction {
     SetBoard,
-    PlayerMove,
-    OpponentMove,
-    IllegalMove,
     GameWon,
+    GameLost,
 }
 
 #[derive(Serialize)]

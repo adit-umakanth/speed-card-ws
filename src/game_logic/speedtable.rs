@@ -13,11 +13,18 @@ pub struct SpeedTable {
     player_piles: PlayerIndexedPile,
 }
 
-use SpeedError::*;
+use SpeedError as SE;
+
+/// Possible events that could arise apart from a simple card movement.
+/// Many of these should not be permitted from the client side.
 #[derive(Debug, PartialEq)]
 pub enum SpeedError {
-    IllegalMoveError,
-    GameWonError(Player),
+    NoCardToDraw,    // Client shouldn't allow
+    HandAlreadyFull, // Client shouldn't allow
+    NoCardToPlace,   // Client shouldn't allow
+    NoCardToPlaceOn, // Client shouldn't allow
+    GameWon,
+    NotAdjacentCard,
 }
 
 fn draw_cards(deck: &mut Vec<Card>, i: usize) -> Vec<Card> {
@@ -54,7 +61,7 @@ impl SpeedTable {
 
     /// Move the top cards on the middle piles onto the active piles.
     /// This is done on request by both players when they think they have no more cards to play.
-    pub fn flip_middle_cards(&mut self) {
+    pub fn flip_middle_cards(&mut self) -> Result<(), SpeedError> {
         if self.middle_piles[Side::LEFT].last().is_none()
             || self.middle_piles[Side::RIGHT].last().is_none()
         {
@@ -70,6 +77,8 @@ impl SpeedTable {
         }
         self.active_piles[Side::LEFT].push(self.middle_piles[Side::LEFT].pop().unwrap());
         self.active_piles[Side::RIGHT].push(self.middle_piles[Side::RIGHT].pop().unwrap());
+
+        Ok(())
     }
 
     fn get_first_empty_hand_idx(&self, player: Player) -> Option<usize> {
@@ -84,9 +93,9 @@ impl SpeedTable {
     pub fn player_draw_card(&mut self, player: Player) -> Result<(), SpeedError> {
         let first_empty_index = self
             .get_first_empty_hand_idx(player)
-            .ok_or(IllegalMoveError)?;
+            .ok_or(SE::HandAlreadyFull)?;
 
-        let card_to_draw = self.player_piles[player].pop().ok_or(IllegalMoveError)?;
+        let card_to_draw = self.player_piles[player].pop().ok_or(SE::NoCardToDraw)?;
         self.player_hands[player][first_empty_index] = Some(card_to_draw);
         Ok(())
     }
@@ -97,20 +106,20 @@ impl SpeedTable {
         side: Side,
         hand_index: usize,
     ) -> Result<(), SpeedError> {
-        let card_to_place = self.player_hands[player][hand_index].ok_or(IllegalMoveError)?;
-        let card_place_on = self.active_piles[side].last().ok_or(IllegalMoveError)?;
+        let card_to_place = self.player_hands[player][hand_index].ok_or(SE::NoCardToPlace)?;
+        let card_place_on = self.active_piles[side].last().ok_or(SE::NoCardToPlaceOn)?;
 
         if card_to_place.is_adjacent_card(card_place_on) {
             self.active_piles[side].push(card_to_place);
             self.player_hands[player][hand_index] = None;
 
             if self.check_for_win(player) {
-                return Err(GameWonError(player));
+                return Err(SE::GameWon);
             };
 
-            Ok(())
+            return Ok(());
         } else {
-            Err(IllegalMoveError)
+            return Err(SE::NotAdjacentCard);
         }
     }
 
@@ -245,7 +254,7 @@ mod tests {
 
         assert_eq!(
             table.place_card(Player::PLAYER1, Side::RIGHT, 1),
-            Err(SpeedError::IllegalMoveError)
+            Err(SE::NotAdjacentCard)
         );
         assert_eq!(table.place_card(Player::PLAYER1, Side::LEFT, 1), Ok(()));
     }
