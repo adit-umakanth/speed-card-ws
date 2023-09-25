@@ -15,7 +15,8 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::{tungstenite::Message, WebSocketStream};
 
 type Sender = SplitSink<WebSocketStream<TcpStream>, Message>;
-type Reciever = SplitStream<WebSocketStream<TcpStream>>;
+type Receiver = SplitStream<WebSocketStream<TcpStream>>;
+type PlayerConnection = (Sender, Receiver);
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -32,7 +33,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn start_game(mut p1: (Sender, Reciever), mut p2: (Sender, Reciever)) -> Result<()> {
+async fn start_game(mut p1: PlayerConnection, mut p2: PlayerConnection) -> Result<()> {
     let mut table = SpeedTable::new();
     send_player_message(&mut p1.0, &mut p2.0, &table, ServerAction::SetBoard).await;
 
@@ -48,7 +49,7 @@ async fn start_game(mut p1: (Sender, Reciever), mut p2: (Sender, Reciever)) -> R
     }
 }
 
-async fn connect_player(listener: &TcpListener) -> Result<(Sender, Reciever)> {
+async fn connect_player(listener: &TcpListener) -> Result<PlayerConnection> {
     let (stream, _) = listener.accept().await?;
     let player_stream = tokio_tungstenite::accept_async(stream).await?;
     Ok(player_stream.split())
@@ -80,8 +81,8 @@ async fn send_player_message(
 }
 
 async fn wait_for_player_move(
-    p1: &mut Reciever,
-    p2: &mut Reciever,
+    p1: &mut Receiver,
+    p2: &mut Receiver,
 ) -> Result<(PlayerAction, Player)> {
     match select(p1.next(), p2.next()).await {
         Either::Left(m) => Ok((
