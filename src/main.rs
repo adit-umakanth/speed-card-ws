@@ -35,7 +35,14 @@ async fn main() -> Result<()> {
 
 async fn start_game(mut p1: PlayerConnection, mut p2: PlayerConnection) -> Result<()> {
     let mut table = SpeedTable::new();
-    send_player_message(&mut p1.0, &mut p2.0, &table, ServerAction::SetBoard).await;
+    send_player_message(
+        &mut p1.0,
+        &mut p2.0,
+        &table,
+        ServerAction::SetBoard,
+        ServerAction::SetBoard,
+    )
+    .await;
 
     loop {
         let (player_move, player) = wait_for_player_move(&mut p1.1, &mut p2.1).await?;
@@ -45,7 +52,14 @@ async fn start_game(mut p1: PlayerConnection, mut p2: PlayerConnection) -> Resul
             PlayerAction::Flip => table.flip_middle_cards(),
             PlayerAction::PlaceCard(hand_index, side) => table.place_card(player, side, hand_index),
         };
-        send_player_message(&mut p1.0, &mut p2.0, &table, ServerAction::SetBoard).await;
+        send_player_message(
+            &mut p1.0,
+            &mut p2.0,
+            &table,
+            ServerAction::SetBoard,
+            ServerAction::SetBoard,
+        )
+        .await;
     }
 }
 
@@ -56,22 +70,23 @@ async fn connect_player(listener: &TcpListener) -> Result<PlayerConnection> {
 }
 
 async fn send_player_message(
-    p1: &mut Sender,
-    p2: &mut Sender,
+    player: &mut Sender,
+    other_player: &mut Sender,
     table: &SpeedTable,
-    server_action: ServerAction,
+    player_action: ServerAction,
+    other_player_action: ServerAction,
 ) {
     let (_, _) = join(
-        p1.send(Message::Text(
+        player.send(Message::Text(
             serde_json::to_string(&ServerMessage {
-                action: server_action,
+                action: player_action,
                 player_view: table.get_player_view(Player::PLAYER1),
             })
             .unwrap(),
         )),
-        p2.send(Message::Text(
+        other_player.send(Message::Text(
             serde_json::to_string(&ServerMessage {
-                action: server_action,
+                action: other_player_action,
                 player_view: table.get_player_view(Player::PLAYER2),
             })
             .unwrap(),
