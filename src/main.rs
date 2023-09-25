@@ -6,11 +6,11 @@ use server_message::*;
 
 use anyhow::Result;
 use futures_util::{
-    future::{join, select, Either, Join},
+    future::{join, select, Either},
     stream::{SplitSink, SplitStream},
-    Future, SinkExt, StreamExt,
+    SinkExt, StreamExt,
 };
-use game_logic::{Player, SpeedTable};
+use game_logic::{Player, SpeedError, SpeedTable};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::{tungstenite::Message, WebSocketStream};
 
@@ -52,12 +52,35 @@ async fn start_game(mut p1: PlayerConnection, mut p2: PlayerConnection) -> Resul
             PlayerAction::Flip => table.flip_middle_cards(),
             PlayerAction::PlaceCard(hand_index, side) => table.place_card(player, side, hand_index),
         };
+
+        if move_result.is_ok() {
+            send_player_message(
+                &mut p1.0,
+                &mut p2.0,
+                &table,
+                ServerAction::NormalMove,
+                ServerAction::NormalMove,
+            )
+            .await;
+            continue;
+        };
+
+        let (player_connection, other_player_connection) = match player {
+            Player::PLAYER1 => (&mut p1, &mut p2),
+            Player::PLAYER2 => (&mut p2, &mut p1),
+        };
+
+        let (player_action, other_player_action) = match move_result.unwrap_err() {
+            SpeedError::GameWon => (ServerAction::GameWon, ServerAction::GameLost),
+            _ => (ServerAction::NormalMove, ServerAction::NormalMove),
+        };
+
         send_player_message(
-            &mut p1.0,
-            &mut p2.0,
+            &mut player_connection.0,
+            &mut other_player_connection.0,
             &table,
-            ServerAction::SetBoard,
-            ServerAction::SetBoard,
+            player_action,
+            other_player_action,
         )
         .await;
     }

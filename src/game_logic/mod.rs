@@ -10,6 +10,7 @@ mod side;
 pub use side::Side;
 
 mod speedtable;
+pub use speedtable::SpeedError;
 pub use speedtable::SpeedTable;
 
 mod playerview;
