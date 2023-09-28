@@ -20,8 +20,7 @@ type PlayerConnection = (Sender, Receiver);
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let addr = "0.0.0.0:8080".to_string();
-    let listener = TcpListener::bind(&addr).await?;
+    let listener = TcpListener::bind(&"0.0.0.0:8080".to_string()).await?;
 
     let p1 = connect_player(&listener).await?;
     println!("Player 1 connected!");
@@ -36,6 +35,7 @@ async fn main() -> Result<()> {
 async fn start_game(mut p1: PlayerConnection, mut p2: PlayerConnection) -> Result<()> {
     let mut table = SpeedTable::new();
     send_player_message(
+        Player::PLAYER1,
         &mut p1.0,
         &mut p2.0,
         &table,
@@ -55,6 +55,7 @@ async fn start_game(mut p1: PlayerConnection, mut p2: PlayerConnection) -> Resul
 
         if move_result.is_ok() {
             send_player_message(
+                Player::PLAYER1,
                 &mut p1.0,
                 &mut p2.0,
                 &table,
@@ -76,6 +77,7 @@ async fn start_game(mut p1: PlayerConnection, mut p2: PlayerConnection) -> Resul
         };
 
         send_player_message(
+            player,
             &mut player_connection.0,
             &mut other_player_connection.0,
             &table,
@@ -93,24 +95,25 @@ async fn connect_player(listener: &TcpListener) -> Result<PlayerConnection> {
 }
 
 async fn send_player_message(
-    player: &mut Sender,
-    other_player: &mut Sender,
+    moved_player: Player,
+    player_connection: &mut Sender,
+    other_player_connection: &mut Sender,
     table: &SpeedTable,
     player_action: ServerAction,
     other_player_action: ServerAction,
 ) {
     let (_, _) = join(
-        player.send(Message::Text(
+        player_connection.send(Message::Text(
             serde_json::to_string(&ServerMessage {
                 action: player_action,
-                player_view: table.get_player_view(Player::PLAYER1),
+                player_view: table.get_player_view(moved_player),
             })
             .unwrap(),
         )),
-        other_player.send(Message::Text(
+        other_player_connection.send(Message::Text(
             serde_json::to_string(&ServerMessage {
                 action: other_player_action,
-                player_view: table.get_player_view(Player::PLAYER2),
+                player_view: table.get_player_view(moved_player.opponent()),
             })
             .unwrap(),
         )),
