@@ -6,21 +6,21 @@ use server_message::*;
 
 use anyhow::Result;
 use futures_util::{
-    future::{join, select, Either, Join},
+    future::{join, select, Either},
     stream::{SplitSink, SplitStream},
-    Future, SinkExt, StreamExt,
+    SinkExt, StreamExt,
 };
-use game_logic::{Player, SpeedTable};
+use game_logic::{Player, SpeedError, SpeedTable};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::{tungstenite::Message, WebSocketStream};
 
 type Sender = SplitSink<WebSocketStream<TcpStream>, Message>;
-type Reciever = SplitStream<WebSocketStream<TcpStream>>;
+type Receiver = SplitStream<WebSocketStream<TcpStream>>;
+type PlayerConnection = (Sender, Receiver);
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let addr = "0.0.0.0:8080".to_string();
-    let listener = TcpListener::bind(&addr).await?;
+    let listener = TcpListener::bind(&"0.0.0.0:8080".to_string()).await?;
 
     let p1 = connect_player(&listener).await?;
     println!("Player 1 connected!");
@@ -32,52 +32,88 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn start_game(mut p1: (Sender, Reciever), mut p2: (Sender, Reciever)) -> Result<()> {
+async fn start_game(mut p1: PlayerConnection, mut p2: PlayerConnection) -> Result<()> {
     let mut table = SpeedTable::new();
-    send_player_message(&mut p1.0, &mut p2.0, &table, ServerAction::SetBoard).await;
+    send_player_message(
+        Player::PLAYER1,
+        &mut p1.0,
+        &mut p2.0,
+        &table,
+        ServerAction::SetBoard,
+        ServerAction::SetBoard,
+    )
+    .await;
 
     loop {
         let (player_move, player) = wait_for_player_move(&mut p1.1, &mut p2.1).await?;
 
-        match player_move {
-            PlayerAction::DrawCard => {
-                table.player_draw_card(player);
-            }
-            PlayerAction::Flip => {
-                table.flip_middle_cards();
-            }
-            PlayerAction::PlaceCard(hand_index, side) => {
-                table.place_card(player, side, hand_index);
-            }
-        }
-        send_player_message(&mut p1.0, &mut p2.0, &table, ServerAction::SetBoard).await;
+        let move_result = match player_move {
+            PlayerAction::DrawCard => table.player_draw_card(player),
+            PlayerAction::Flip => table.flip_middle_cards(),
+            PlayerAction::PlaceCard(hand_index, side) => table.place_card(player, side, hand_index),
+        };
+
+        if move_result.is_ok() {
+            send_player_message(
+                Player::PLAYER1,
+                &mut p1.0,
+                &mut p2.0,
+                &table,
+                ServerAction::NormalMove,
+                ServerAction::NormalMove,
+            )
+            .await;
+            continue;
+        };
+
+        let (player_connection, other_player_connection) = match player {
+            Player::PLAYER1 => (&mut p1, &mut p2),
+            Player::PLAYER2 => (&mut p2, &mut p1),
+        };
+
+        let (player_action, other_player_action) = match move_result.unwrap_err() {
+            SpeedError::GameWon => (ServerAction::GameWon, ServerAction::GameLost),
+            _ => (ServerAction::NormalMove, ServerAction::NormalMove),
+        };
+
+        send_player_message(
+            player,
+            &mut player_connection.0,
+            &mut other_player_connection.0,
+            &table,
+            player_action,
+            other_player_action,
+        )
+        .await;
     }
 }
 
-async fn connect_player(listener: &TcpListener) -> Result<(Sender, Reciever)> {
+async fn connect_player(listener: &TcpListener) -> Result<PlayerConnection> {
     let (stream, _) = listener.accept().await?;
     let player_stream = tokio_tungstenite::accept_async(stream).await?;
     Ok(player_stream.split())
 }
 
 async fn send_player_message(
-    p1: &mut Sender,
-    p2: &mut Sender,
+    moved_player: Player,
+    player_connection: &mut Sender,
+    other_player_connection: &mut Sender,
     table: &SpeedTable,
-    server_action: ServerAction,
+    player_action: ServerAction,
+    other_player_action: ServerAction,
 ) {
     let (_, _) = join(
-        p1.send(Message::Text(
+        player_connection.send(Message::Text(
             serde_json::to_string(&ServerMessage {
-                action: server_action,
-                player_view: table.get_player_view(Player::PLAYER1),
+                action: player_action,
+                player_view: table.get_player_view(moved_player),
             })
             .unwrap(),
         )),
-        p2.send(Message::Text(
+        other_player_connection.send(Message::Text(
             serde_json::to_string(&ServerMessage {
-                action: server_action,
-                player_view: table.get_player_view(Player::PLAYER2),
+                action: other_player_action,
+                player_view: table.get_player_view(moved_player.opponent()),
             })
             .unwrap(),
         )),
@@ -86,8 +122,8 @@ async fn send_player_message(
 }
 
 async fn wait_for_player_move(
-    p1: &mut Reciever,
-    p2: &mut Reciever,
+    p1: &mut Receiver,
+    p2: &mut Receiver,
 ) -> Result<(PlayerAction, Player)> {
     match select(p1.next(), p2.next()).await {
         Either::Left(m) => Ok((
