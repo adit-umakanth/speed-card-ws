@@ -1,6 +1,8 @@
 use serde::Serialize;
 
-use crate::game_logic::{Player, PlayerView};
+use crate::game_logic::{Player, PlayerView
+
+};
 
 #[derive(Clone, Copy, Serialize)]
 pub enum ServerAction {
