@@ -7,19 +7,20 @@ use server_message::*;
 use anyhow::Result;
 use futures_util::{
     future::{join, select, Either},
-    stream::{SplitSink, SplitStream},
     SinkExt, StreamExt,
 };
 use game_logic::{Player, SpeedError, SpeedTable};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::{tungstenite::Message, WebSocketStream};
 
-type Sender = SplitSink<WebSocketStream<TcpStream>, Message>;
-type Receiver = SplitStream<WebSocketStream<TcpStream>>;
-type PlayerConnection = (Sender, Receiver);
+type PlayerConnection = WebSocketStream<TcpStream>;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    start_server().await
+}
+
+async fn start_server() -> Result<()> {
     let listener = TcpListener::bind(&"0.0.0.0:8080".to_string()).await?;
 
     let p1 = connect_player(&listener).await?;
@@ -36,8 +37,8 @@ async fn start_game(mut p1: PlayerConnection, mut p2: PlayerConnection) -> Resul
     let mut table = SpeedTable::new();
     send_player_message(
         Player::PLAYER1,
-        &mut p1.0,
-        &mut p2.0,
+        &mut p1,
+        &mut p2,
         &table,
         ServerAction::SetBoard,
         ServerAction::SetBoard,
@@ -45,7 +46,7 @@ async fn start_game(mut p1: PlayerConnection, mut p2: PlayerConnection) -> Resul
     .await;
 
     loop {
-        let (player_move, player) = wait_for_player_move(&mut p1.1, &mut p2.1).await?;
+        let (player_move, player) = wait_for_player_move(&mut p1, &mut p2).await?;
 
         let move_result = match player_move {
             PlayerAction::DrawCard => table.player_draw_card(player),
@@ -56,8 +57,8 @@ async fn start_game(mut p1: PlayerConnection, mut p2: PlayerConnection) -> Resul
         if move_result.is_ok() {
             send_player_message(
                 Player::PLAYER1,
-                &mut p1.0,
-                &mut p2.0,
+                &mut p1,
+                &mut p2,
                 &table,
                 ServerAction::NormalMove,
                 ServerAction::NormalMove,
@@ -78,8 +79,8 @@ async fn start_game(mut p1: PlayerConnection, mut p2: PlayerConnection) -> Resul
 
         send_player_message(
             player,
-            &mut player_connection.0,
-            &mut other_player_connection.0,
+            player_connection,
+            other_player_connection,
             &table,
             player_action,
             other_player_action,
@@ -91,13 +92,13 @@ async fn start_game(mut p1: PlayerConnection, mut p2: PlayerConnection) -> Resul
 async fn connect_player(listener: &TcpListener) -> Result<PlayerConnection> {
     let (stream, _) = listener.accept().await?;
     let player_stream = tokio_tungstenite::accept_async(stream).await?;
-    Ok(player_stream.split())
+    Ok(player_stream)
 }
 
 async fn send_player_message(
     moved_player: Player,
-    player_connection: &mut Sender,
-    other_player_connection: &mut Sender,
+    player_connection: &mut PlayerConnection,
+    other_player_connection: &mut PlayerConnection,
     table: &SpeedTable,
     player_action: ServerAction,
     other_player_action: ServerAction,
@@ -122,17 +123,55 @@ async fn send_player_message(
 }
 
 async fn wait_for_player_move(
-    p1: &mut Receiver,
-    p2: &mut Receiver,
+    p1: &mut PlayerConnection,
+    p2: &mut PlayerConnection,
 ) -> Result<(PlayerAction, Player)> {
     match select(p1.next(), p2.next()).await {
         Either::Left(m) => Ok((
-            serde_json::from_str(&m.0.unwrap().unwrap().into_text()?)?,
+            serde_json::from_str(&m.0.unwrap()?.into_text()?)?,
             Player::PLAYER1,
         )),
         Either::Right(m) => Ok((
-            serde_json::from_str(&m.0.unwrap().unwrap().into_text()?)?,
+            serde_json::from_str(&m.0.unwrap()?.into_text()?)?,
             Player::PLAYER2,
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{thread, time::Duration};
+    use tokio_tungstenite::connect_async;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_websocket_server_game() -> Result<()> {
+        std::thread::spawn(|| {
+            let _ = main();
+        });
+        thread::sleep(Duration::from_secs(2));
+
+        let (mut p1, _) = connect_async(url::Url::parse("ws://0.0.0.0:8080")?).await?;
+        let (mut p2, _) = connect_async(url::Url::parse("ws://0.0.0.0:8080")?).await?;
+        let table = SpeedTable::new();
+
+        let message1 = p1.next().await.unwrap()?.into_text()?;
+        let message2 = p2.next().await.unwrap()?.into_text()?;
+
+        let empty_board_message = ServerMessage {
+            player_view: table.get_player_view(Player::PLAYER1),
+            action: ServerAction::SetBoard,
+        };
+        assert_eq!(
+            empty_board_message,
+            serde_json::from_str(&message1).unwrap()
+        );
+        assert_eq!(
+            empty_board_message,
+            serde_json::from_str(&message2).unwrap()
+        );
+
+        Ok(())
     }
 }

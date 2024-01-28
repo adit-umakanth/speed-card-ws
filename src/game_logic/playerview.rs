@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::card::Card;
 
@@ -6,7 +6,7 @@ use super::card::Card;
  * A boolean field indicates whether a card should be rendered in the player view.
  * A false value means that a card does not exist for that specific spot.
  */
-#[derive(Serialize)]
+#[derive(Debug, Deserialize, PartialEq, Serialize)]
 pub struct PlayerView {
     pub player_hand: [Option<Card>; 4],
     pub active_cards: [Option<Card>; 2],
